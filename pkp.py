@@ -247,7 +247,8 @@ def step2():
                               "Aplikasi mendeteksi nilai minus anomali SIKD.")
         issues = []
         for code, rows in ds.get("apbd_quarterly", {}).items():
-            issues += P.detect_negative_anomalies(pd.DataFrame(rows), labels,
+            df_cek = pd.DataFrame(rows, index=labels)
+            issues += P.detect_negative_anomalies(df_cek, C.BASE_ROWS,
                                                   context=f"APBD {code}")
         if issues:
             st.warning(f"⚠️ Ditemukan {len(issues)} nilai minus (anomali SIKD).")
@@ -513,7 +514,7 @@ def step5():
 
     tabs = st.tabs(["ADHB", "ADHK (2025=100)", "Deflator", "Rekap Growth & Implisit"])
     for tab, src in zip(tabs, [result["lk4_adhb"], result["lk4_adhk"],
-                               deflators, result["rekap"]):
+                               deflators, result["rekap"]]):
         with tab:
             df = pd.DataFrame({l: [s.get(l) for s in src.values()] for l in labels},
                               index=list(src.keys()))
