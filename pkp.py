@@ -103,7 +103,6 @@ def _handle_upload(up):
 def render_sidebar():
     with st.sidebar:
         st.markdown("## 📊 PKP Rebasing 2025=100")
-        st.markdown(f"**{HAKI}**")
         st.divider()
 
         st.markdown("### 📁 File Proyek")
@@ -147,7 +146,7 @@ def render_sidebar():
         with st.expander("📚 Kamus Singkat"):
             st.markdown(KAMUS_MD)
         st.divider()
-        st.caption(f"{HAKI} — dibangun dengan Python Streamlit.")
+        st.caption(f"{HAKI} — dibangun dengan Python.")
 
 
 # ------------------------------------------------------------------ #
@@ -737,7 +736,6 @@ def main():
     if c2.button("➡️ Lanjut", disabled=step >= 6):
         st.session_state.step = min(6, step + 1)
         st.rerun()
-    st.caption(f"{HAKI}")
 
 
 if __name__ == "__main__":
