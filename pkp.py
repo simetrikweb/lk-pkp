@@ -1,7 +1,7 @@
 """
 pkp.py — Aplikasi Utama
 Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Cirebon (3209)
-Guided Wizard 6 Langkah untuk pemula.
+Guided Wizard 6 Langkah + File Proyek (Simpan/Buka/Template).
 ©2026 Arief Rahman (tahun berjalan otomatis)
 """
 
@@ -17,12 +17,11 @@ from core import denton as D
 from core import pkp_calculator as PC
 from core import validators as V
 from core import excel_exporter as X
+from core import template_io as T
 from data import sample_cirebon as SC
 
-# ------------------------------------------------------------------ #
-# COPYRIGHT (tahun berjalan otomatis)
-# ------------------------------------------------------------------ #
 HAKI = f"©{date.today().year} Arief Rahman"
+MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 st.set_page_config(page_title="LK PKP Rebasing 2025=100 - Kab. Cirebon",
                    layout="wide")
@@ -30,34 +29,26 @@ st.set_page_config(page_title="LK PKP Rebasing 2025=100 - Kab. Cirebon",
 # ------------------------------------------------------------------ #
 # SESSION STATE
 # ------------------------------------------------------------------ #
-if "step" not in st.session_state:
-    st.session_state.step = 1
-if "dataset" not in st.session_state:
-    st.session_state.dataset = None
-if "result" not in st.session_state:
-    st.session_state.result = {}
-if "denton_log" not in st.session_state:
-    st.session_state.denton_log = []
+for k, v in [("step", 1), ("dataset", None), ("result", {}),
+             ("denton_log", []), ("pending_import", None),
+             ("show_open", False), ("setup", None)]:
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-# ------------------------------------------------------------------ #
-# TEKS PANDUAN PEMULA
-# ------------------------------------------------------------------ #
 PETUNJUK_MD = """
 **Cara pakai singkat (ikuti urutan):**
-1. **Langkah 1** — Pilih wilayah & triwulan berjalan. Pemula disarankan klik tombol
-   **"Muat Dataset Simulasi Kab. Cirebon"** agar semua terisi contoh data.
-2. **Langkah 2** — Isi atau unggah data mentah per tab (APBN, APBD, Desa, SSF, MBG, Deflator).
-   Anda boleh mengetik angka gaya Indonesia (`5.976.606,65`) **atau** gaya biasa (`5976606.65`).
-   Satuan Rupiah penuh otomatis dikonversi ke Juta Rupiah.
+1. **Langkah 1** — Pilih wilayah & triwulan berjalan. Pemula disarankan klik
+   **"Muat Dataset Simulasi Kab. Cirebon"**, atau unggah File Kerja terisi.
+2. **Langkah 2** — Isi/edit data mentah per tab, atau unggah template terisi.
+   Angka boleh gaya Indonesia (`5.976.606,65`) atau biasa (`5976606.65`).
 3. **Langkah 3** — Periksa preview LK 3 (9 baris baku) per sumber dana.
-4. **Langkah 4** — Jalankan benchmarking **Denton** (APBN otomatis dilewati karena audited).
-   Baca log Kasus 1/2/3 dan grafik pra-vs-pasca.
-5. **Langkah 5** — Lihat hasil LK 4: ADHB, ADHK (2025=100), deflator, rekap growth, dan grafik.
-6. **Langkah 6** — Jalankan audit otomatis lalu **unduh workbook .xlsx** lengkap
-   (termasuk sheet siap unggah `Upload Siperi` & `Upload Verdana`).
+4. **Langkah 4** — Jalankan benchmarking **Denton** (APBN otomatis dilewati).
+5. **Langkah 5** — Lihat LK 4: ADHB, ADHK (2025=100), deflator, rekap, grafik.
+6. **Langkah 6** — Audit otomatis lalu **unduh workbook .xlsx** lengkap.
 
-**Tips pengisian angka:** gunakan titik sebagai pemisah ribuan dan koma sebagai desimal
-sesuai kaidah Indonesia, contoh `5.976.606,65`. Aplikasi juga menerima format biasa.
+**File Proyek (sidebar):** 📋 Unduh Template kosong → isi di Excel → 📤 unggah
+kembali → pratinjau → Terapkan. Atau 💾 Simpan Pekerjaan kapan saja untuk
+dilanjutkan lain waktu lewat 📂 Buka.
 """
 
 DATA_EKSTERNAL_MD = """
@@ -65,7 +56,7 @@ DATA_EKSTERNAL_MD = """
 |----|----------------------|-------------------|-----------|---------|
 | 1 | Realisasi belanja APBN per satker | KPPN / SPN / MSDKI | Triwulan & Tahun | Audited → Denton di-bypass |
 | 2 | Realisasi APBD (per fungsi) | SIKD DJPK & BPKAD | Triwulan & Tahun | Waspadai sel minus (anomali SIKD) |
-| 3 | Data Neraca K3 Desa (`kodekab 3209`) | Kemendesa / DJPK | Tahun | Biasanya Rupiah penuh → auto /1.000.000 |
+| 3 | Data Neraca K3 Desa (`kodekab 3209`) | Kemendesa / DJPK | Tahun | Rupiah penuh → auto /1.000.000 |
 | 4 | Alokasi SSF (Jamkes, JKK, JK, JKP, JP) | BPJS Kes / BPJS Naker | Triwulan & Tahun | Masuk fungsi Administrasi Pemerintahan |
 | 5 | Total STIK & MBG | BGN / Dinkes / Dikbud | Triwulan | 2025 sering Rupiah penuh |
 | 6 | Deflator: IHPB, Indeks Upah, Implisit PMTB, IHK | BPS / BPS Provinsi | Triwulan | Basis 2025=100 |
@@ -82,19 +73,137 @@ KAMUS_MD = """
 
 
 # ------------------------------------------------------------------ #
-# SIDEBAR (panduan + copyright)
+# SIDEBAR: copyright + File Proyek (Hybrid) + panduan
 # ------------------------------------------------------------------ #
-with st.sidebar:
-    st.markdown("## 📊 PKP Rebasing 2025=100")
-    st.divider()
-    with st.expander("📖 Petunjuk Penggunaan (baca dulu)", expanded=True):
-        st.markdown(PETUNJUK_MD)
-    with st.expander("🗂️ Data Eksternal yang Diperlukan"):
-        st.markdown(DATA_EKSTERNAL_MD)
-    with st.expander("📚 Kamus Singkat"):
-        st.markdown(KAMUS_MD)
-    st.divider()
-    st.caption(f"{HAKI} — dibangun dengan Python.")
+def _filled_count(ds):
+    if not ds:
+        return 0, 0
+    tot = filled = 0
+    for src in ["apbn", "apbd", "ssf"]:
+        for code, rows in ds.get(f"{src}_quarterly", {}).items():
+            tot += 1
+            if any(any(abs(v) > 1e-12 for v in arr) for arr in rows.values()):
+                filled += 1
+    return filled, tot
+
+
+def _handle_upload(up):
+    key = (up.name, up.size)
+    if st.session_state.get("last_upload_key") == key and st.session_state.pending_import:
+        return
+    try:
+        parsed, report = T.parse_workbook(up.read())
+        st.session_state.pending_import = (parsed, report)
+        st.session_state.last_upload_key = key
+        st.session_state.show_open = False
+    except Exception as e:
+        st.sidebar.error(f"File tidak terbaca: {e}")
+
+
+def render_sidebar():
+    with st.sidebar:
+        st.markdown("## 📊 PKP Rebasing 2025=100")
+        st.markdown(f"**{HAKI}**")
+        st.divider()
+
+        st.markdown("### 📁 File Proyek")
+        if st.button("📂 Buka / Lanjutkan File Kerja", use_container_width=True):
+            st.session_state.show_open = not st.session_state.show_open
+        if st.session_state.show_open:
+            up = st.file_uploader("Unggah File Kerja (.xlsx)",
+                                  type=["xlsx"], key="up_sidebar")
+            if up is not None:
+                _handle_upload(up)
+                st.sidebar.info("File dibaca. Pratinjau & tombol Terapkan ada "
+                                "di Langkah 1 dan Langkah 2.")
+
+        setup = st.session_state.setup or {
+            "start_year": C.START_YEAR, "current_quarter": (2026, 2)}
+        tpl = T.build_workbook_bytes(None, setup, filled=False)
+        st.download_button("📋 Unduh Template Kosong", data=tpl,
+                           file_name="Template_PKP_Cirebon.xlsx",
+                           mime=MIME_XLSX, use_container_width=True)
+
+        if st.session_state.dataset is not None:
+            sav = T.build_workbook_bytes(st.session_state.dataset, setup, filled=True)
+            st.download_button("💾 Simpan Pekerjaan (.xlsx)", data=sav,
+                               file_name="Simpanan_PKP_Cirebon.xlsx",
+                               mime=MIME_XLSX, use_container_width=True)
+        else:
+            st.button("💾 Simpan Pekerjaan (.xlsx)", disabled=True,
+                      use_container_width=True)
+            st.caption("Isi/muat data dulu (Langkah 1–2) agar bisa disimpan.")
+
+        filled, tot = _filled_count(st.session_state.dataset)
+        st.caption(f"Status: Langkah {st.session_state.step} • "
+                   f"{filled}/{tot} sub-tabel terisi")
+        st.divider()
+
+        with st.expander("📖 Petunjuk Penggunaan (baca dulu)", expanded=True):
+            st.markdown(PETUNJUK_MD)
+        with st.expander("🗂️ Data Eksternal yang Diperlukan"):
+            st.markdown(DATA_EKSTERNAL_MD)
+        with st.expander("📚 Kamus Singkat"):
+            st.markdown(KAMUS_MD)
+        st.divider()
+        st.caption(f"{HAKI} — dibangun dengan Python Streamlit.")
+
+
+# ------------------------------------------------------------------ #
+# PANEL PRATINJAU IMPOR (pratinjau + laporan anomali -> Terapkan)
+# ------------------------------------------------------------------ #
+def render_import_panel():
+    pi = st.session_state.pending_import
+    if not pi:
+        return
+    parsed, rep = pi
+    with st.container(border=True):
+        st.markdown("### 📥 Pratinjau Impor File Kerja")
+        meta = parsed.get("meta", {})
+        st.markdown(
+            f"- Tersimpan: **{meta.get('disimpan_pada', '-')}**  \n"
+            f"- Triwulan berjalan di file: **{meta.get('triwulan_berjalan', '-')}**  \n"
+            f"- Sheet terbaca: **{', '.join(rep['sheets_read'])}**")
+        if rep["sheets_missing"]:
+            st.markdown("- Sheet tidak ada (nilainya tetap seperti sekarang): "
+                        f"**{', '.join(rep['sheets_missing'])}**")
+        if rep["rows_filled"]:
+            dfrep = pd.DataFrame({
+                "Sheet": list(rep["rows_filled"].keys()),
+                "Sel terisi": list(rep["rows_filled"].values()),
+                "Satuan terdeteksi": [rep["units"].get(k, "-")
+                                      for k in rep["rows_filled"].keys()]})
+            st.dataframe(dfrep, use_container_width=True, hide_index=True)
+        if rep["negatives"]:
+            st.warning(f"⚠️ {len(rep['negatives'])} nilai MINUS terdeteksi "
+                       "(anomali SIKD). Periksa sebelum menerapkan:")
+            st.dataframe(pd.DataFrame(rep["negatives"]),
+                         use_container_width=True, hide_index=True)
+        if rep["unknown_codes"]:
+            st.info("Kode sub-tabel tidak dikenali dan diabaikan: "
+                    + ", ".join(sorted(set(rep["unknown_codes"]))))
+
+        c1, c2 = st.columns(2)
+        if c1.button("✅ Terapkan ke Aplikasi", type="primary"):
+            setup = st.session_state.setup or {
+                "start_year": C.START_YEAR, "current_quarter": (2026, 2)}
+            cq = setup["current_quarter"]
+            if meta.get("triwulan_berjalan"):
+                try:
+                    cq = C.quarter_of_label(str(meta["triwulan_berjalan"]))
+                except Exception:
+                    pass
+            sy = int(meta.get("tahun_awal") or setup["start_year"])
+            st.session_state.setup = {"wilayah": f"{C.NAMA_KAB} - {C.KODE_KAB}",
+                                      "start_year": sy, "current_quarter": cq}
+            st.session_state.dataset = T.dataset_from_parsed(parsed, sy, cq)
+            st.session_state.result = {}
+            st.session_state.pending_import = None
+            st.success("✅ File Kerja diterapkan. Silakan lanjut proses.")
+            st.rerun()
+        if c2.button("❌ Batalkan Impor"):
+            st.session_state.pending_import = None
+            st.rerun()
 
 
 # ------------------------------------------------------------------ #
@@ -107,7 +216,6 @@ def _panduan(title, body):
 
 
 def tampil(df_num, **kw):
-    """Tampilkan DataFrame numerik dengan format Indonesia."""
     st.dataframe(P.fmt_df_id(df_num), **kw)
 
 
@@ -121,66 +229,51 @@ def _rekap_nine(nine_map, codes, quarters):
     out = {r: {} for r in C.STD_ROWS}
     for r in C.STD_ROWS:
         sers = [nine_map[c][r] for c in codes if c in nine_map]
-        out[r] = PC.sum_series_list(sers, quarters) if sers else {
-            C.qlabel(y, q): 0.0 for (y, q) in quarters}
+        out[r] = (PC.sum_series_list(sers, quarters) if sers else
+                  {C.qlabel(y, q): 0.0 for (y, q) in quarters})
     return out
 
 
 def edit_base_rows(source_key, code, quarters, existing=None):
-    """Editor 5 baris input x triwulan; sel berupa TEKS format Indonesia."""
     labels = C.qlabels(quarters)
     base = {}
     for r in C.BASE_ROWS:
         arr = (existing or {}).get(r, [])
         base[r] = [arr[i] if i < len(arr) else 0.0 for i in range(len(labels))]
     df_num = pd.DataFrame(base, index=labels).T
-    df_str = P.fmt_df_id(df_num)
-    edited = st.data_editor(df_str, key=f"ed_{source_key}_{code}",
+    edited = st.data_editor(P.fmt_df_id(df_num),
+                            key=f"ed_{source_key}_{code}_{len(labels)}",
                             use_container_width=True, num_rows="fixed")
-    out = {}
-    for r in C.BASE_ROWS:
-        out[r] = [(P.parse_id_number(edited.loc[r, l]) or 0.0) for l in labels]
-    return out
+    return {r: [(P.parse_id_number(edited.loc[r, l]) or 0.0) for l in labels]
+            for r in C.BASE_ROWS}
 
 
 def edit_series(key, ser, quarters, name="Nilai"):
     labels = C.qlabels(quarters)
     df = pd.DataFrame({name: [ser.get(l, 0.0) for l in labels]}, index=labels)
-    edited = st.data_editor(P.fmt_df_id(df), key=key,
+    edited = st.data_editor(P.fmt_df_id(df), key=f"{key}_{len(labels)}",
                             use_container_width=True, num_rows="fixed")
     return {l: (P.parse_id_number(edited.loc[l, name]) or 0.0) for l in labels}
 
 
-def merge_uploaded(base_dict, dfu, quarters):
-    """Gabungkan file unggahan ke editor (cocokkan nama baris & kolom triwulan)."""
-    labels = C.qlabels(quarters)
-    comp_col = next((c for c in ["Komponen", "komponen", "Baris", "Row"]
-                     if c in dfu.columns), None)
-    if comp_col is None:
-        dfu = dfu.reset_index()
-        comp_col = dfu.columns[0]
-    idx = C.quarter_index_map(quarters)
-    for _, row in dfu.iterrows():
-        comp = str(row[comp_col]).strip()
-        if comp in base_dict:
-            for l in labels:
-                if l in dfu.columns:
-                    v = P.parse_id_number(row[l])
-                    if v is not None:
-                        base_dict[comp][idx[l]] = v
-    return base_dict
-
-
 def _need_dataset():
     if st.session_state.dataset is None:
-        st.warning("⚠️ Belum ada dataset. Kembali ke **Langkah 1** dan klik "
-                   "**Muat Dataset Simulasi Kab. Cirebon** atau unggah data Anda.")
+        st.warning("⚠️ Belum ada dataset. Kembali ke **Langkah 1**: muat simulasi "
+                   "atau unggah File Kerja.")
         st.stop()
 
 
 def _fig(fig):
-    fig.update_layout(separators=".,")   # ribuan=titik, desimal=koma di grafik
+    fig.update_layout(separators=".,")
     return fig
+
+
+def _upload_box(key):
+    up = st.file_uploader("📤 Unggah File Kerja / Template terisi (.xlsx)",
+                          type=["xlsx"], key=key)
+    if up is not None:
+        _handle_upload(up)
+    render_import_panel()
 
 
 # ------------------------------------------------------------------ #
@@ -189,8 +282,9 @@ def _fig(fig):
 def step1():
     st.header("Langkah 1 — Setup & Alur Kerja")
     _panduan("Mulai di sini",
-             "Pilih wilayah, tahun awal, dan triwulan berjalan. Pemula cukup klik "
-             "tombol **Muat Dataset Simulasi Kab. Cirebon** untuk mencoba seluruh alur.")
+             "Pilih wilayah & triwulan berjalan, lalu pilih salah satu: "
+             "(a) klik **Muat Dataset Simulasi** untuk mencoba, atau "
+             "(b) **unggah File Kerja/template terisi** di kotak bawah ini.")
     col1, col2, col3 = st.columns(3)
     wilayah = col1.selectbox("Wilayah", [f"{C.NAMA_KAB} - {C.KODE_KAB}"])
     start_year = col2.number_input("Tahun awal historis", 2015, 2025, C.START_YEAR)
@@ -203,6 +297,7 @@ def step1():
         st.session_state.dataset = SC.build_sample_dataset(cq)
         st.session_state.result = {}
         st.success("Dataset simulasi dimuat. Lanjut ke Langkah 2.")
+    _upload_box("up_step1")
     if st.session_state.dataset is not None:
         st.info("✅ Dataset siap. Silakan lanjut ke Langkah 2.")
     st.button("Lanjut ke Langkah 2 ➡️",
@@ -216,6 +311,7 @@ def step1():
 def step2():
     _need_dataset()
     st.header("Langkah 2 — Input & Cleaning Data Mentah")
+    _upload_box("up_step2")
     ds = st.session_state.dataset
     quarters = ds["quarters"]
     labels = C.qlabels(quarters)
@@ -226,17 +322,10 @@ def step2():
     with tabs[0]:
         _panduan("Data APBN", "Sumber KPPN/SPN. Bersifat audited → Denton di-bypass. "
                               "Isi 5 komponen per sub-tabel (Juta Rp).")
-        up = st.file_uploader("Unggah Excel/CSV APBN (opsional)",
-                              type=["xlsx", "xls", "csv"], key="up_apbn")
         for st_def in C.APBN_SUBTABLES:
             if st_def["is_rekap"]:
                 continue
             with st.expander(f"{st_def['code']} — {st_def['name']} ({st_def['sifat']})"):
-                if up is not None and st.button(f"Terapkan unggahan ke {st_def['code']}",
-                                                key=f"btn_apbn_{st_def['code']}"):
-                    ds["apbn_quarterly"][st_def["code"]] = merge_uploaded(
-                        ds["apbn_quarterly"].get(st_def["code"], {}),
-                        P.read_table_file(up), quarters)
                 ds["apbn_quarterly"][st_def["code"]] = edit_base_rows(
                     "apbn", st_def["code"], quarters,
                     ds["apbn_quarterly"].get(st_def["code"]))
@@ -299,7 +388,6 @@ def step2():
         _panduan("MBG & Output BI", "MBG 2025 sering Rupiah penuh (auto-normalisasi). "
                                     "Output BI default 0 untuk Kab. Cirebon.")
         st.subheader("Total MBG (auto-normalisasi satuan)")
-        vals = [ds.get("mbg_total", {}).get(l, 0.0) for l in labels]
         edited_mbg = edit_series("ed_mbg", ds.get("mbg_total", {}), quarters)
         norm, unit = P.normalize_to_juta([edited_mbg[l] for l in labels])
         ds["mbg_total"] = {l: norm[i] for i, l in enumerate(labels)}
@@ -345,10 +433,9 @@ def step3():
         apbn_nine["1.8"] = _rekap_nine(apbn_nine, ["1.4", "1.5", "1.6"], quarters)
         apbn_nine["1.9"] = _rekap_nine(apbn_nine, ["1.7", "1.8"], quarters)
         result["apbn_nine"] = apbn_nine
-        for code in ["1.7", "1.8", "1.9"] + list(apbn_nine.keys()):
-            if code in apbn_nine:
-                with st.expander(f"APBN {code}"):
-                    tampil(_nine_df(apbn_nine[code], quarters), use_container_width=True)
+        for code in apbn_nine:
+            with st.expander(f"APBN {code}"):
+                tampil(_nine_df(apbn_nine[code], quarters), use_container_width=True)
     with tab_o:
         apbd_raw = {}
         for code, rows in ds.get("apbd_quarterly", {}).items():
@@ -600,13 +687,13 @@ def step6():
         result.setdefault(k, {})
     result.setdefault("deflators", ds.get("deflators", {}))
 
-    st.subheader("️ Pratinjau Upload Siperi (format Indonesia)")
+    st.subheader(" Pratinjau Upload Siperi (format Indonesia)")
     rows = []
     for id_code, ser in result["siperi"].items():
         for l in C.qlabels(quarters):
             rows.append([id_code, l, P.fmt_id(ser.get(l))])
     st.dataframe(pd.DataFrame(rows, columns=["id", "periode", "nilai"]),
-                 use_container_width=True)
+                 use_container_width=True, hide_index=True)
 
     st.subheader("📥 Unduh Workbook Lengkap")
     st.caption("File berisi ANGKA murni siap unggah; di Excel berbahasa Indonesia "
@@ -615,8 +702,7 @@ def step6():
         xlsx = X.export_workbook(result, quarters)
         st.download_button("⬇️ Download Workbook Lengkap (.xlsx)", data=xlsx,
                            file_name="LK_PKP_Rebasing2025_KabCirebon.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument"
-                                ".spreadsheetml.sheet")
+                           mime=MIME_XLSX)
     except Exception as e:
         import traceback
         st.error(f"Gagal membuat workbook: {e}")
@@ -633,6 +719,7 @@ def step6():
 def main():
     st.title("📊 Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Cirebon")
     st.caption(f"Guided Wizard 6 Langkah • Setara LK 3 + LK 4 Rebasing Regional • **{HAKI}**")
+    render_sidebar()
 
     step = st.session_state.step
     st.progress(min(step, 6) / 6)
@@ -647,6 +734,7 @@ def main():
     if c2.button("➡️ Lanjut", disabled=step >= 6):
         st.session_state.step = min(6, step + 1)
         st.rerun()
+    st.caption(f"{HAKI}")
 
 
 if __name__ == "__main__":
