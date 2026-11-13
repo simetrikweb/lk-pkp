@@ -125,7 +125,8 @@ def render_sidebar():
                            mime=MIME_XLSX, use_container_width=True)
 
         if st.session_state.dataset is not None:
-            sav = T.build_workbook_bytes(st.session_state.dataset, setup, filled=True)
+            sav = T.build_workbook_bytes(st.session_state.dataset, setup,
+                                         filled=True, result=st.session_state.result)
             st.download_button("💾 Simpan Pekerjaan (.xlsx)", data=sav,
                                file_name="Simpanan_PKP_Cirebon.xlsx",
                                mime=MIME_XLSX, use_container_width=True)
@@ -395,6 +396,10 @@ def step2():
         st.subheader("Output BI (Juta Rp)")
         ds["output_bi"] = edit_series("ed_bi", ds.get("output_bi", {}),
                                       quarters, name="Output BI Berlaku")
+        ds["output_bi_konstan"] = edit_series("ed_bik", ds.get("output_bi_konstan", {}),
+                                              quarters, name="Output BI Konstan")
+        ds["output_bi_konstan"] = edit_series("ed_bik", ds.get("output_bi_konstan", {}),
+                                              quarters, name="Output BI Konstan")
 
     with tabs[5]:
         _panduan("Deflator (2025=100)", "Pastikan rata-rata 4 triwulan 2025 ≈ 100,00.")
@@ -699,7 +704,7 @@ def step6():
     st.caption("File berisi ANGKA murni siap unggah; di Excel berbahasa Indonesia "
                "tampil otomatis sesuai kaidah titik-koma.")
     try:
-        xlsx = X.export_workbook(result, quarters)
+        xlsx = X.export_workbook(result, quarters, ds)
         st.download_button("⬇️ Download Workbook Lengkap (.xlsx)", data=xlsx,
                            file_name="LK_PKP_Rebasing2025_KabCirebon.xlsx",
                            mime=MIME_XLSX)
