@@ -157,10 +157,15 @@ def build_desa_quarterly_from_k3(annual_k3, quarters, spuno=None):
         if y not in annual_jt:
             continue
         a = annual_jt[y]
-        ratio = spuno.get(y) or spuno.get(max(k for k in spuno.keys() if k <= y)) \
-            if spuno else None
-        if ratio is None:
+        if not spuno:
             continue
+        kunci = sorted(spuno.keys())
+        if y in spuno:
+            ratio = spuno[y]
+        elif y < kunci[0]:
+            ratio = spuno[kunci[0]]
+        else:
+            ratio = spuno[kunci[-1]]
         i = idx[C.qlabel(y, q)]
         pegawai = a.get("Belanja Pegawai", 0.0) * ratio["Belanja Pegawai"][q - 1]
         barang = a.get("Belanja Barang", 0.0) * ratio["Belanja Barang"][q - 1]
