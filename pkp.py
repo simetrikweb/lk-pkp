@@ -596,6 +596,10 @@ def step6():
 
     result["siperi"] = _build_siperi(result, quarters)
     result["verdanan"] = _build_verdana(result, quarters)
+    for k in ["apbn_nine", "apbd_nine_raw", "apbd_nine_denton", "ssf_nine",
+              "lk4_adhb", "lk4_adhk", "rekap"]:
+        result.setdefault(k, {})
+    result.setdefault("deflators", ds.get("deflators", {}))
 
     st.subheader("️ Pratinjau Upload Siperi (format Indonesia)")
     rows = []
@@ -615,7 +619,10 @@ def step6():
                            mime="application/vnd.openxmlformats-officedocument"
                                 ".spreadsheetml.sheet")
     except Exception as e:
+        import traceback
         st.error(f"Gagal membuat workbook: {e}")
+        with st.expander("🔍 Detail teknis error (kirim bagian ini bila masih gagal)"):
+            st.code(traceback.format_exc())
 
     if st.button("🔁 Kembali ke Langkah 1"):
         st.session_state.step = 1
