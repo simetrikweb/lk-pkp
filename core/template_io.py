@@ -249,8 +249,9 @@ def parse_workbook(file_bytes):
         factor = 1e-6 if unit == "Rupiah" else 1.0
         for code, comp, l, v in entries:
             val = v * factor
-            (parsed[f"{src}_quarterly"]
-             .setdefault(code, {}).setdefault(comp, {})[l] = val)
+            target = (parsed[f"{src}_quarterly"]
+                      .setdefault(code, {}).setdefault(comp, {}))
+            target[l] = val
             if val < 0:
                 report["negatives"].append(
                     {"sheet": sheet, "subtabel": code, "komponen": comp,
@@ -284,8 +285,9 @@ def parse_workbook(file_bytes):
         unit = P.detect_unit(raws) if raws else "Juta"
         factor = 1e-6 if unit == "Rupiah" else 1.0
         for code, comp, y, v in entries:
-            (parsed[f"{src}_annual"]
-             .setdefault(code, {}).setdefault(y, {})[comp] = v * factor)
+            target = (parsed[f"{src}_annual"]
+                      .setdefault(code, {}).setdefault(y, {}))
+            target[comp] = v * factor
         report["units"][sheet] = unit
         report["rows_filled"][sheet] = len(entries)
 
