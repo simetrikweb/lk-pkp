@@ -398,8 +398,6 @@ def step2():
                                       quarters, name="Output BI Berlaku")
         ds["output_bi_konstan"] = edit_series("ed_bik", ds.get("output_bi_konstan", {}),
                                               quarters, name="Output BI Konstan")
-        ds["output_bi_konstan"] = edit_series("ed_bik", ds.get("output_bi_konstan", {}),
-                                              quarters, name="Output BI Konstan")
 
     with tabs[5]:
         _panduan("Deflator (2025=100)", "Pastikan rata-rata 4 triwulan 2025 ≈ 100,00.")
