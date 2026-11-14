@@ -1,1 +1,35 @@
+# ===== Sampah Python (dibuat otomatis oleh komputer, tidak perlu diunggah) =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
+# ===== Folder virtual environment (ukuran besar, hanya untuk komputer lokal) =====
+.venv/
+venv/
+env/
+ENV/
+
+# ===== Rahasia Streamlit (jangan pernah bocor ke internet) =====
+.streamlit/secrets.toml
+
+# ===== File editor / IDE =====
+.vscode/
+.idea/
+*.swp
+
+# ===== File sistem operasi (tersembunyi, tidak berguna di repository) =====
+.DS_Store
+Thumbs.db
+
+# ===== Log & folder sementara hasil kerja lokal =====
+*.log
+output/
+temp/
+
+# ===== File Data Mentah / Laporan (Excel, CSV) =====
+# Agar file data tidak ikut terunggah dan membuat repository bengkak
+*.xlsx
+*.xls
+*.csv
+*.ods
