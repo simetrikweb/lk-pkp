@@ -1,6 +1,6 @@
 """
 core/constants.py
-Konfigurasi baku aplikasi PKP Rebasing 2025=100 - Kabupaten Cirebon (3209).
+Konfigurasi baku aplikasi PKP Rebasing 2025=100 - Kabupaten Konoha (XXXX).
 Seluruh nilai dalam Juta Rupiah kecuali dinyatakan lain.
 """
 
@@ -10,8 +10,8 @@ Seluruh nilai dalam Juta Rupiah kecuali dinyatakan lain.
 BASE_YEAR = 2025          # Tahun dasar rebasing
 START_YEAR = 2019         # Awal deret historis
 MAX_YEAR = 2030           # Batas atas struktur (hanya struktur, bukan aktif)
-KODE_KAB = "3209"
-NAMA_KAB = "Kabupaten Cirebon"
+KODE_KAB = "XXXX"
+NAMA_KAB = "Kabupaten Konoha"
 
 # Label 5 baris input dasar (diisi pengguna / sumber data)
 BASE_ROWS = [

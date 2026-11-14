@@ -51,7 +51,7 @@ S5_BLOCKS = [
     ("5.3", ["Output BI Berlaku", "Output BI Konstan"]),
 ]
 PETUNJUK_LINES = [
-    "TEMPLATE / FILE KERJA - LK PKP Rebasing 2025=100 Kab. Cirebon",
+    "TEMPLATE / FILE KERJA - LK PKP Rebasing 2025=100 Kab. Konoha",
     "Struktur mengikuti LK 3 Indikator dan Denton_V1.",
     "",
     "1. Isi HANYA sel angka pada 5 baris input tiap blok: Belanja Barang,",
@@ -60,7 +60,7 @@ PETUNJUK_LINES = [
     "2. Jangan mengubah nama sheet, nama blok, maupun nama komponen/rincian.",
     "3. Satuan: JUTA RUPIAH. Aplikasi mendeteksi otomatis bila Anda menulis",
     "   dalam Rupiah penuh dan menormalkannya.",
-    "4. Penulisan angka bebas: gaya Indonesia (5.976.606,65) atau biasa.",
+    "4. Penulisan angka bebas: kaidah Indonesia (5.976.606,65) atau biasa.",
     "5. Sel kosong dianggap NOL. Nilai minus dilaporkan sebagai anomali SIKD",
     "   pada pratinjau unggah, sebelum diterapkan.",
     "6. Sheet 'catatan' bebas Anda isi; tidak dibaca aplikasi.",
@@ -213,7 +213,7 @@ def build_workbook_bytes(dataset, setup, filled=True, result=None):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
 
-        home = [["LK PKP Rebasing 2025=100 - Kabupaten Cirebon (3209)"],
+        home = [["LK PKP Rebasing 2025=100 - Kabupaten Konoha (XXXX)"],
                 ["File Kerja / Template - struktur LK 3 Indikator dan Denton_V1"],
                 []]
         home.append(["Kunci", "Nilai"])
