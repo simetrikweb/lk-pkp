@@ -719,7 +719,7 @@ def step6():
 # MAIN
 # ------------------------------------------------------------------ #
 def main():
-    st.title("📊 Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Konoha")
+    st.title("📊 Lembar Kerja PKP Rebasing 2025=100")
     st.caption(f"Panduan 6 Langkah • LK PKP Rebasing Regional • **{HAKI}**")
     render_sidebar()
 
