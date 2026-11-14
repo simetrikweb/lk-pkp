@@ -120,14 +120,14 @@ def render_sidebar():
             "start_year": C.START_YEAR, "current_quarter": (2026, 2)}
         tpl = T.build_workbook_bytes(None, setup, filled=False)
         st.download_button("📋 Unduh Template Kosong", data=tpl,
-                           file_name="Template_PKP_Cirebon.xlsx",
+                           file_name="Template_PKP_Konoha.xlsx",
                            mime=MIME_XLSX, use_container_width=True)
 
         if st.session_state.dataset is not None:
             sav = T.build_workbook_bytes(st.session_state.dataset, setup,
                                          filled=True, result=st.session_state.result)
             st.download_button("💾 Simpan Pekerjaan (.xlsx)", data=sav,
-                               file_name="Simpanan_PKP_Cirebon.xlsx",
+                               file_name="Simpanan_PKP_Konoha.xlsx",
                                mime=MIME_XLSX, use_container_width=True)
         else:
             st.button("💾 Simpan Pekerjaan (.xlsx)", disabled=True,
@@ -703,7 +703,7 @@ def step6():
     try:
         xlsx = X.export_workbook(result, quarters, ds)
         st.download_button("⬇️ Download Workbook Lengkap (.xlsx)", data=xlsx,
-                           file_name="LK_PKP_Rebasing2025_KabCirebon.xlsx",
+                           file_name="LK_PKP_Rebasing2025_Konoha.xlsx",
                            mime=MIME_XLSX)
     except Exception as e:
         import traceback
