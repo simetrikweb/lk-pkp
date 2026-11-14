@@ -75,7 +75,7 @@ CATATAN_LINES = [
     "4. Data APBN merupakan data alokasi hasil audited sehingga angka indikator = angka Denton",
 ]
 PETUNJUK_LINES = [
-    "TEMPLATE / FILE KERJA - LK PKP Rebasing 2025=100 Kab. Cirebon",
+    "TEMPLATE / FILE KERJA - LK PKP Rebasing 2025=100 Kab. Konoha",
     "Struktur mengikuti LK 3 Indikator dan Denton_V1 + sheet Deflator.",
     "Rentang kolom: triwulan 2019Q1-2030Q4; tahun 2019-2030.",
     "",
@@ -271,7 +271,7 @@ def build_workbook_bytes(dataset, setup, filled=True, result=None):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
 
-        home = [["LK PKP Rebasing 2025=100 - Kabupaten Cirebon (3209)"],
+        home = [["LK PKP Rebasing 2025=100 - Kabupaten Konoha (XXXX)"],
                 ["File Kerja / Template - struktur LK 3 + Deflator"],
                 []]
         home.append(["Kunci", "Nilai"])
