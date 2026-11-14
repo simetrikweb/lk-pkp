@@ -1,6 +1,6 @@
 """
 pkp.py — Aplikasi Utama
-Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Cirebon (3209)
+Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Konoha (3209)
 Guided Wizard 6 Langkah + File Proyek (Simpan/Buka/Template).
 ©2026 Arief Rahman (tahun berjalan otomatis)
 """
@@ -18,12 +18,12 @@ from core import pkp_calculator as PC
 from core import validators as V
 from core import excel_exporter as X
 from core import template_io as T
-from data import sample_cirebon as SC
+from data import sample_konoha as SC
 
 HAKI = f"©{date.today().year} Arief Rahman"
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-st.set_page_config(page_title="LK PKP Rebasing 2025=100 - Kab. Cirebon",
+st.set_page_config(page_title="LK PKP Rebasing 2025=100 - Kab. Konoha",
                    layout="wide")
 
 # ------------------------------------------------------------------ #
@@ -38,7 +38,7 @@ for k, v in [("step", 1), ("dataset", None), ("result", {}),
 PETUNJUK_MD = """
 **Cara pakai singkat (ikuti urutan):**
 1. **Langkah 1** — Pilih wilayah & triwulan berjalan. Pemula disarankan klik
-   **"Muat Dataset Simulasi Kab. Cirebon"**, atau unggah File Kerja terisi.
+   **"Muat Dataset Simulasi Kab. Konoha"**, atau unggah File Kerja terisi.
 2. **Langkah 2** — Isi/edit data mentah per tab, atau unggah template terisi.
    Angka boleh gaya Indonesia (`5.976.606,65`) atau biasa (`5976606.65`).
 3. **Langkah 3** — Periksa preview LK 3 (9 baris baku) per sumber dana.
@@ -293,7 +293,7 @@ def step1():
     st.session_state.setup = {"wilayah": wilayah,
                               "start_year": int(start_year),
                               "current_quarter": cq}
-    if st.button("🚀 Muat Dataset Simulasi Kab. Cirebon", type="primary"):
+    if st.button("🚀 Muat Dataset Simulasi Kab. Konoha", type="primary"):
         st.session_state.dataset = SC.build_sample_dataset(cq)
         st.session_state.result = {}
         st.success("Dataset simulasi dimuat. Lanjut ke Langkah 2.")
@@ -369,7 +369,7 @@ def step2():
 
     with tabs[3]:
         _panduan("SSF & STIK", "Seluruh output SSF = Kolektif. Bila alokasi kantor hanya "
-                               "Kota Cirebon, pakai rasio BPJS Kes: Barang 42%, Pegawai 55%, "
+                               "Kota Konoha, pakai rasio BPJS Kes: Barang 42%, Pegawai 55%, "
                                "Penyusutan 3%.")
         for st_def in C.SSF_SUBTABLES:
             if st_def["is_rekap"]:
@@ -386,7 +386,7 @@ def step2():
 
     with tabs[4]:
         _panduan("MBG & Output BI", "MBG 2025 sering Rupiah penuh (auto-normalisasi). "
-                                    "Output BI default 0 untuk Kab. Cirebon.")
+                                    "Output BI default 0 untuk Kab. Konoha.")
         st.subheader("Total MBG (auto-normalisasi satuan)")
         edited_mbg = edit_series("ed_mbg", ds.get("mbg_total", {}), quarters)
         norm, unit = P.normalize_to_juta([edited_mbg[l] for l in labels])
@@ -719,7 +719,7 @@ def step6():
 # MAIN
 # ------------------------------------------------------------------ #
 def main():
-    st.title("📊 Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Cirebon")
+    st.title("📊 Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Konoha")
     st.caption(f"Guided Wizard 6 Langkah • Setara LK 3 + LK 4 Rebasing Regional • **{HAKI}**")
     render_sidebar()
 
