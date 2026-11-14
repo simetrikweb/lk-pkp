@@ -1,6 +1,6 @@
 """
 pkp.py — Aplikasi Utama
-Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Konoha (XXXX)
+Lembar Kerja PKP Rebasing 2025=100
 Guided Wizard 6 Langkah + File Proyek (Simpan/Buka/Template).
 ©2026 Arief Rahman (tahun berjalan otomatis)
 """
