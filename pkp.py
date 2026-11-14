@@ -1,6 +1,6 @@
 """
 pkp.py — Aplikasi Utama
-Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Konoha (3209)
+Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Konoha (XXXX)
 Guided Wizard 6 Langkah + File Proyek (Simpan/Buka/Template).
 ©2026 Arief Rahman (tahun berjalan otomatis)
 """
@@ -56,7 +56,7 @@ DATA_EKSTERNAL_MD = """
 |----|----------------------|-------------------|-----------|---------|
 | 1 | Realisasi belanja APBN per satker | KPPN / SPN / MSDKI | Triwulan & Tahun | Audited → Denton di-bypass |
 | 2 | Realisasi APBD (per fungsi) | SIKD DJPK & BPKAD | Triwulan & Tahun | Waspadai sel minus (anomali SIKD) |
-| 3 | Data Neraca K3 Desa (`kodekab 3209`) | Kemendesa / DJPK | Tahun | Rupiah penuh → auto /1.000.000 |
+| 3 | Data Neraca K3 Desa (`kodekab xxxx`) | Kemendesa / DJPK | Tahun | Rupiah penuh → auto /1.000.000 |
 | 4 | Alokasi SSF (Jamkes, JKK, JK, JKP, JP) | BPJS Kes / BPJS Naker | Triwulan & Tahun | Masuk fungsi Administrasi Pemerintahan |
 | 5 | Total STIK & MBG | BGN / Dinkes / Dikbud | Triwulan | 2025 sering Rupiah penuh |
 | 6 | Deflator: IHPB, Indeks Upah, Implisit PMTB, IHK | BPS / BPS Provinsi | Triwulan | Basis 2025=100 |
@@ -357,7 +357,7 @@ def step2():
             st.success("Total tahunan APBD dihitung.")
 
     with tabs[2]:
-        _panduan("APBDes (K3)", "Data Neraca K3 `kodekab 3209` biasanya Rupiah penuh → "
+        _panduan("APBDes (K3)", "Data Neraca K3 `kodekab xxxx` biasanya Rupiah penuh → "
                                 "otomatis /1.000.000. Penyusutan = 20% × Belanja Modal.")
         if st.button("Konstruksi indikator triwulanan Desa (K3 × SPUN-O)"):
             ds["desa_quarterly"] = PC.build_desa_quarterly_from_k3(
@@ -720,7 +720,7 @@ def step6():
 # ------------------------------------------------------------------ #
 def main():
     st.title("📊 Lembar Kerja PKP Rebasing 2025=100 — Kabupaten Konoha")
-    st.caption(f"Guided Wizard 6 Langkah • Setara LK 3 + LK 4 Rebasing Regional • **{HAKI}**")
+    st.caption(f"Panduan 6 Langkah • LK PKP Rebasing Regional • **{HAKI}**")
     render_sidebar()
 
     step = st.session_state.step
