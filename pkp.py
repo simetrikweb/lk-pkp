@@ -40,7 +40,7 @@ PETUNJUK_MD = """
 1. **Langkah 1** — Pilih wilayah & triwulan berjalan. Pemula disarankan klik
    **"Muat Dataset Simulasi Kab. Konoha"**, atau unggah File Kerja terisi.
 2. **Langkah 2** — Isi/edit data mentah per tab, atau unggah template terisi.
-   Angka boleh gaya Indonesia (`5.976.606,65`) atau biasa (`5976606.65`).
+   Angka boleh kaidah Indonesia (`5.976.606,65`) atau biasa (`5976606.65`).
 3. **Langkah 3** — Periksa preview LK 3 (9 baris baku) per sumber dana.
 4. **Langkah 4** — Jalankan benchmarking **Denton** (APBN otomatis dilewati).
 5. **Langkah 5** — Lihat LK 4: ADHB, ADHK (2025=100), deflator, rekap, grafik.
