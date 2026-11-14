@@ -1,9 +1,10 @@
 """
-core/excel_exporter.py (v5)
-Workbook final = LK3 (15 sheet, rentang 2019Q1-2030Q4 / 2019-2030)
-+ LK4 Rebasing Regional_V1 (nama sheet resmi) + Siperi + Verdana.
-Sheet 7.APBD A & 8.Desa A  : tabel Growth (%) TAHUNAN di kanan, RUMUS Excel tertanam.
-Sheet 10-13 (D)           : tabel Growth q-o-q, y-o-y, c-o-c di kanan, RUMUS tertanam.
+core/excel_exporter.py (v6)
+Workbook final: LK3 (15 sheet, urutan resmi, 5. STIK, BI Q di antara 4 & 6)
++ LK4: 1.ADHB Pusat, 2ab. ADHB Daerah_Final, 3. ADHB SSF, STIK, BI, Deflator,
+       1. ADHK Pusat, 2.ADHK Daerah, 3. ADHK SSF, STIK, BI, Rekap Total,
+       Rekap Benchmark, Upload Siperi, Upload Verdana.
+Sheet 7/8: Growth tahunan (rumus Excel). Sheet 10-13: Growth q-o-q/y-o-y/c-o-c (rumus).
 """
 
 import io
@@ -138,8 +139,10 @@ def _aggregates(nines, extras):
     for tag, codes in GROUP_CODES.items():
         g["ba_" + tag] = rowsum(codes, "Biaya Antara")
         g["ntb_" + tag] = rowsum(codes, "NTB")
-        g["out_k" + tag] = rowsum(codes, "Output") if tag in ("adm", "air", "inf") else None
-        g["out_i" + tag] = rowsum(codes, "Output") if tag in ("dik", "kes", "hib") else None
+        if tag in ("adm", "air", "inf"):
+            g["out_k" + tag] = rowsum(codes, "Output")
+        else:
+            g["out_i" + tag] = rowsum(codes, "Output")
     g["pen_k"] = rowsum(KOL_CODES, "Penerimaan")
     g["pen_i"] = rowsum(IND_CODES, "Penerimaan")
     g["bi"] = extras.get("bi")
@@ -235,10 +238,10 @@ def _apply_q_formulas(ws, tracker):
                 cell.number_format = '#,##0.00'
 
 
-def _write_growth_headers(ws, tracker_codes, kind):
+def _write_growth_headers(ws, tracker, kind):
     code_rows = {}
     head_rows = {}
-    for (code, comp), rpos in tracker_codes.items():
+    for (code, comp), rpos in tracker.items():
         code_rows[code] = min(code_rows.get(code, 999999), rpos - 2)
         head_rows[code] = min(head_rows.get(code, 999999), rpos - 1)
     if kind == "A":
@@ -255,7 +258,6 @@ def _write_growth_headers(ws, tracker_codes, kind):
     for code, cr in code_rows.items():
         for off, title in offs:
             ws.cell(row=cr + 1, column=off).value = title
-        for off, title in offs:
             for i, l in enumerate(labs):
                 ws.cell(row=head_rows[code] + 1, column=off + i).value = l
 
@@ -311,86 +313,91 @@ def export_workbook(result, quarters, dataset):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
 
-        home = [["LK PKP Rebasing 2025=100 - Kabupaten Konoha (XXXX)"],
+        home = [["LK PKP Rebasing 2025=100 - Kabupaten Cirebon (3209)"],
                 ["Workbook final: LK 3 + LK 4 Rebasing Regional_V1"],
                 ["Rentang: triwulan 2019Q1-2030Q4; tahun 2019-2030"], []]
         pd.DataFrame(home).to_excel(writer, sheet_name="Home",
                                     index=False, header=False)
-        cat = [["Catatan"]] + [[None] for _ in range(10)]
+        cat = list(T.CATATAN_LINES) + [None] * 10
         pd.DataFrame(cat).to_excel(writer, sheet_name="catatan",
                                    index=False, header=False)
 
         trackers = {}
-        for sheet, kind, src in T.QA_SHEETS:
-            col_labels = FL if kind == "Q" else FY
-            keys = ds_labels if kind == "Q" else ds_year_strs
-            rows = []
-            tracker = {}
-            pos = 0
-            for code in T.BLOCKS[src]:
-                if kind == "Q":
-                    nine = T._nine_lists_for_q(dataset, src, code)
-                else:
-                    nine = T._nine_lists_for_a(dataset, src, code, ds_years)
-                ns = T._nine_to_series(nine, keys)
-                blk, pos = T._block_rows_series(code, col_labels, ns, C.STD_ROWS,
-                                                tracker=tracker, pos=pos)
-                rows += blk
-            pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
-                                        index=False, header=False)
-            trackers[sheet] = (tracker, kind)
+        for sheet, kind, src in T.BUILD_ORDER:
+            if kind == "DEF":
+                continue
+            if kind in ("Q", "A"):
+                col_labels = FL if kind == "Q" else FY
+                keys = ds_labels if kind == "Q" else ds_year_strs
+                rows = []
+                tracker = {}
+                pos = 0
+                for code in T.BLOCKS[src]:
+                    if kind == "Q":
+                        nine = T._nine_lists_for_q(dataset, src, code)
+                    else:
+                        nine = T._nine_lists_for_a(dataset, src, code, ds_years)
+                    ns = T._nine_to_series(nine, keys)
+                    blk, pos = T._block_rows_series(code, col_labels, ns, C.STD_ROWS,
+                                                    tracker=tracker, pos=pos)
+                    rows += blk
+                pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
+                                            index=False, header=False)
+                trackers[sheet] = (tracker, kind)
 
-        rows = []
-        for code, title, order in T.S5_BLOCKS:
-            rows.append([title] + [None] * NQ)
-            rows.append(["Rincian"] + FL)
-            for comp in order:
-                if comp == "MBG":
-                    src_ser = mbg_f
-                elif comp == "Klaim Jaminan kesehatan":
-                    src_ser = {l: (stik_f.get(l) or 0)
-                               * C.stik_ratio_for(*C.quarter_of_label(l))[0]
-                               for l in ds_labels}
-                elif comp.startswith("Klaim jaminan kecelakaan"):
-                    src_ser = {l: (stik_f.get(l) or 0)
-                               * C.stik_ratio_for(*C.quarter_of_label(l))[1]
-                               for l in ds_labels}
-                elif comp == "Output BI Berlaku":
-                    src_ser = bi_f
-                else:
-                    src_ser = bik_f
-                rows.append([comp] + [src_ser.get(l) for l in FL])
-            rows.append([None] * (1 + NQ))
-        pd.DataFrame(rows).to_excel(writer, sheet_name="5. STIK, BI Q",
-                                    index=False, header=False)
+            elif kind == "S5":
+                rows = []
+                for code, title, order in T.S5_BLOCKS:
+                    rows.append([title] + [None] * NQ)
+                    rows.append(["Rincian"] + FL)
+                    for comp in order:
+                        if comp == "MBG":
+                            src_ser = mbg_f
+                        elif comp == "Klaim Jaminan kesehatan":
+                            src_ser = {l: (stik_f.get(l) or 0)
+                                       * C.stik_ratio_for(*C.quarter_of_label(l))[0]
+                                       for l in ds_labels}
+                        elif comp.startswith("Klaim jaminan kecelakaan"):
+                            src_ser = {l: (stik_f.get(l) or 0)
+                                       * C.stik_ratio_for(*C.quarter_of_label(l))[1]
+                                       for l in ds_labels}
+                        elif comp == "Output BI Berlaku":
+                            src_ser = bi_f
+                        else:
+                            src_ser = bik_f
+                        rows.append([comp] + [src_ser.get(l) for l in FL])
+                    rows.append([None] * (1 + NQ))
+                pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
+                                            index=False, header=False)
 
-        for sheet, src in T.D_SHEETS:
-            rows = []
-            tracker = {}
-            pos = 0
-            src_map = {"apbn": None,
-                       "apbd": result.get("apbd_nine_denton", {}),
-                       "desa": result.get("desa_nine", {}),
-                       "ssf": result.get("ssf_nine", {})}[src]
-            for code in T.BLOCKS[src]:
-                ns = None
-                if src == "apbn":
-                    ns = T._nine_to_series(T._nine_lists_for_q(dataset, src, code),
-                                           ds_labels)
-                elif code in T.REKAP_MAP:
-                    members = [src_map.get(m) for m in T.REKAP_MAP[code] if m in src_map]
-                    if members:
-                        ns = {comp: {l: sum(m.get(comp, {}).get(l, 0.0) or 0.0
-                                            for m in members) for l in FL}
-                              for comp in C.STD_ROWS}
-                elif code in (src_map or {}):
-                    ns = src_map[code]
-                blk, pos = T._block_rows_series(code, FL, ns, C.STD_ROWS,
-                                                tracker=tracker, pos=pos)
-                rows += blk
-            pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
-                                        index=False, header=False)
-            trackers[sheet] = (tracker, "Q")
+            elif kind == "D":
+                rows = []
+                tracker = {}
+                pos = 0
+                src_map = {"apbn": None,
+                           "apbd": result.get("apbd_nine_denton", {}),
+                           "desa": result.get("desa_nine", {}),
+                           "ssf": result.get("ssf_nine", {})}[src]
+                for code in T.BLOCKS[src]:
+                    ns = None
+                    if src == "apbn":
+                        ns = T._nine_to_series(
+                            T._nine_lists_for_q(dataset, src, code), ds_labels)
+                    elif code in T.REKAP_MAP:
+                        members = [src_map.get(m) for m in T.REKAP_MAP[code]
+                                   if m in src_map]
+                        if members:
+                            ns = {comp: {l: sum(m.get(comp, {}).get(l, 0.0) or 0.0
+                                                for m in members) for l in FL}
+                                  for comp in C.STD_ROWS}
+                    elif code in (src_map or {}):
+                        ns = src_map[code]
+                    blk, pos = T._block_rows_series(code, FL, ns, C.STD_ROWS,
+                                                    tracker=tracker, pos=pos)
+                    rows += blk
+                pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
+                                            index=False, header=False)
+                trackers[sheet] = (tracker, "Q")
 
         for sheet, (tracker, kind) in trackers.items():
             ws = writer.book[sheet]
@@ -401,7 +408,7 @@ def export_workbook(result, quarters, dataset):
                 _write_growth_headers(ws, tracker, "Q")
                 _apply_q_formulas(ws, tracker)
 
-        def lk4_sheets(prefix, nines, names):
+        def lk4_block(names, nines):
             mapping = [
                 (names[0], ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
                             "1.7", "1.8", "1.9"]),
@@ -418,14 +425,12 @@ def export_workbook(result, quarters, dataset):
                 pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
                                             index=False, header=False)
 
-        lk4_sheets("ADHB", n_hb, ["1.ADHB Pusat", "2ab.2ab. ADHB Daerah_Final",
-                                  "3. ADHB SSF, STIK, BI"])
-        lk4_sheets("ADHK", n_hk, ["1. ADHK Pusat", "2.ADHK Daerah",
-                                  "3. ADHK SSF, STIK, BI"])
-
-        rows = [[d] + [defl.get(d, {}).get(l) for l in FL] for d in DEF_ORDER]
-        pd.DataFrame(rows).to_excel(writer, sheet_name="Deflator",
-                                    index=False, header=False)
+        lk4_block(["1.ADHB Pusat", "2ab. ADHB Daerah_Final",
+                   "3. ADHB SSF, STIK, BI"], n_hb)
+        pd.DataFrame(T.deflator_rows(defl, FL)).to_excel(
+            writer, sheet_name="Deflator", index=False, header=False)
+        lk4_block(["1. ADHK Pusat", "2.ADHK Daerah",
+                   "3. ADHK SSF, STIK, BI"], n_hk)
 
         pd.DataFrame(_rekap_tables(agg_hb, agg_hk, y0, y1)).to_excel(
             writer, sheet_name="Rekap Total", index=False, header=False)
