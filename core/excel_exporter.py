@@ -1,17 +1,25 @@
 """
-core/excel_exporter.py (v4)
-Workbook final = LK3 (15 sheet) + LK4 Rebasing Regional_V1 (11 sheet)
-+ Upload Siperi + Upload Verdana. Angka berformat '#,##0.00'.
+core/excel_exporter.py (v5)
+Workbook final = LK3 (15 sheet, rentang 2019Q1-2030Q4 / 2019-2030)
++ LK4 Rebasing Regional_V1 (nama sheet resmi) + Siperi + Verdana.
+Sheet 7.APBD A & 8.Desa A  : tabel Growth (%) TAHUNAN di kanan, RUMUS Excel tertanam.
+Sheet 10-13 (D)           : tabel Growth q-o-q, y-o-y, c-o-c di kanan, RUMUS tertanam.
 """
 
 import io
 
 import pandas as pd
+from openpyxl.utils import get_column_letter as CL
 
 from . import constants as C
-from . import parsers as P
 from . import pkp_calculator as PC
 from . import template_io as T
+
+FL = T.FULL_LABELS
+FQ = T.FULL_QUARTERS
+FY = T.FULL_YEAR_STRS
+NQ = len(FL)
+NY = len(FY)
 
 DEF_ORDER = ["Implisit PMTB", "IHPB Umum tanpa Ekspor", "IHK", "Indeks Upah adj_2"]
 
@@ -42,7 +50,6 @@ ROWSPEC = [
     ("PKP", "Kolektif", "pkp_k"),
     ("PKP", "Individu", "pkp_i"),
 ]
-
 GROUP_CODES = {
     "adm": ["1.1", "2.1", "4.1"], "air": ["1.2", "2.2"], "inf": ["1.3", "2.3"],
     "dik": ["1.4", "2.4"], "kes": ["1.5", "2.5"], "hib": ["1.6", "2.6"],
@@ -52,8 +59,9 @@ IND_CODES = ["1.4", "1.5", "1.6", "2.4", "2.5", "2.6"]
 
 
 def _ser(arr, labels):
-    return {labels[i]: (arr[i] if arr and i < len(arr) else None)
-            for i in range(len(labels))}
+    if arr is None:
+        return {l: None for l in labels}
+    return {labels[i]: (arr[i] if i < len(arr) else None) for i in range(len(labels))}
 
 
 def _add(a, b):
@@ -78,7 +86,7 @@ def _manual_nine(vals):
             "Output": list(vals), "PKP": list(vals)}
 
 
-def _block_nines(dataset, result, labels, use_raw=False):
+def _block_nines(dataset, result, use_raw=False):
     q = dataset["quarters"]
     n = {}
     for code, rows in dataset.get("apbn_quarterly", {}).items():
@@ -86,17 +94,17 @@ def _block_nines(dataset, result, labels, use_raw=False):
     src = result.get("apbd_nine_raw" if use_raw else "apbd_nine_denton") or {}
     for code, rows in dataset.get("apbd_quarterly", {}).items():
         if code in src:
-            n[code] = T._series_nine_to_lists(src[code], labels)
+            n[code] = T._series_nine_to_lists(src[code], C.qlabels(q))
         else:
             n[code] = PC.compute_nine_rows(rows, q)
     dn = (result.get("desa_nine") or {}).get("3.1")
     if dn and not use_raw:
-        n["3.1"] = T._series_nine_to_lists(dn, labels)
+        n["3.1"] = T._series_nine_to_lists(dn, C.qlabels(q))
     elif dataset.get("desa_quarterly"):
         n["3.1"] = PC.compute_nine_rows(dataset["desa_quarterly"], q)
     for code, rows in dataset.get("ssf_quarterly", {}).items():
         n[code] = PC.compute_nine_rows(rows, q)
-    for rk in ["1.7", "1.8", "1.9", "2.7", "2.8", "2.9", "4.1"]:
+    for rk in T.REKAP_MAP:
         members = [n[m] for m in T.REKAP_MAP[rk] if m in n]
         n[rk] = T._sum_nine_lists(members) if members else None
     return n
@@ -124,19 +132,14 @@ def _aggregates(nines, extras):
     def rowsum(codes, row):
         out = None
         for c in codes:
-            arr = (nines.get(c) or {}).get(row)
-            out = _add(out, arr)
+            out = _add(out, (nines.get(c) or {}).get(row))
         return out
 
     for tag, codes in GROUP_CODES.items():
         g["ba_" + tag] = rowsum(codes, "Biaya Antara")
         g["ntb_" + tag] = rowsum(codes, "NTB")
-    g["out_kadm"] = rowsum(GROUP_CODES["adm"], "Output")
-    g["out_kair"] = rowsum(GROUP_CODES["air"], "Output")
-    g["out_kinf"] = rowsum(GROUP_CODES["inf"], "Output")
-    g["out_idik"] = rowsum(GROUP_CODES["dik"], "Output")
-    g["out_ikes"] = rowsum(GROUP_CODES["kes"], "Output")
-    g["out_ihib"] = rowsum(GROUP_CODES["hib"], "Output")
+        g["out_k" + tag] = rowsum(codes, "Output") if tag in ("adm", "air", "inf") else None
+        g["out_i" + tag] = rowsum(codes, "Output") if tag in ("dik", "kes", "hib") else None
     g["pen_k"] = rowsum(KOL_CODES, "Penerimaan")
     g["pen_i"] = rowsum(IND_CODES, "Penerimaan")
     g["bi"] = extras.get("bi")
@@ -149,63 +152,135 @@ def _aggregates(nines, extras):
     return g
 
 
-def _rekap_tables(agg_hb, agg_hk, labels, quarters, y0, y1):
+def _rekap_tables(agg_hb, agg_hk, y0, y1):
     rows = []
-    hb = {k: _ser(v, labels) for k, v in agg_hb.items() if v}
-    hk = {k: _ser(v, labels) for k, v in agg_hk.items() if v}
+    hb = {k: _ser(v, FL) for k, v in agg_hb.items()}
+    hk = {k: _ser(v, FL) for k, v in agg_hk.items()}
     impl = {}
     for k in hb:
-        if k in hk:
-            impl[k] = {l: (hb[k].get(l) / hk[k].get(l) * 100.0)
-                       if hk[k].get(l) else None for l in labels}
+        impl[k] = {l: (hb[k].get(l) / hk[k].get(l) * 100.0)
+                   if hk[k].get(l) else None for l in FL}
     out_total = None
     for k in ["out_kadm", "out_kair", "out_kinf", "out_idik", "out_ikes", "out_ihib"]:
         out_total = _add(out_total, agg_hb.get(k))
-    out_total_ser = _ser(out_total, labels)
+    ot = _ser(out_total, FL)
 
     def table(title, getter):
         rows.append([title])
-        rows.append(["Rincian"] + labels)
+        rows.append(["Rincian"] + FL)
         for group, label, key in ROWSPEC:
             ser = getter(key)
-            name = (group + " " + label).strip()
-            rows.append([name] + [(ser or {}).get(l) for l in labels])
-        rows.append([None] * (1 + len(labels)))
+            rows.append([(group + " " + label).strip()]
+                        + [(ser or {}).get(l) for l in FL])
+        rows.append([None] * (1 + NQ))
 
     table(f"Tabel 1:  ADHB Tahun {y0}-{y1}", lambda k: hb.get(k))
     table(f"Tabel 2:  ADHK Tahun {y0}-{y1}", lambda k: hk.get(k))
     table("Tabel 1:  Distribusi ADHB",
-          lambda k: {l: (hb.get(k, {}).get(l) / out_total_ser.get(l) * 100.0)
-                     if out_total_ser.get(l) else None for l in labels})
+          lambda k: {l: (hb.get(k, {}).get(l) / ot.get(l) * 100.0)
+                     if ot.get(l) else None for l in FL})
     table(f"Tabel 3:  Y-o-Y Tahun {y0}-{y1}",
-          lambda k: PC.growth_yoy(hb.get(k, {}), quarters))
+          lambda k: PC.growth_yoy(hb.get(k, {}), FQ))
     table(f"Tabel 4:  Q-to-Q Tahun {y0}-{y1}",
-          lambda k: PC.growth_qoq(hb.get(k, {}), quarters))
+          lambda k: PC.growth_qoq(hb.get(k, {}), FQ))
     table(f"Tabel 5:  C-to-C Tahun {y0}-{y1}",
-          lambda k: PC.growth_ctc(hb.get(k, {}), quarters))
+          lambda k: PC.growth_ctc(hb.get(k, {}), FQ))
     table(f"Tabel 6:  Indeks Implisit Tahun {y0}-{y1}", lambda k: impl.get(k))
     table(f"Tabel 7:  Implisit Y-o-Y Tahun {y0}-{y1}",
-          lambda k: PC.growth_yoy(impl.get(k, {}), quarters))
+          lambda k: PC.growth_yoy(impl.get(k, {}), FQ))
     table(f"Tabel 8:  Implisit Q-to-Q Tahun {y0}-{y1}",
-          lambda k: PC.growth_qoq(impl.get(k, {}), quarters))
+          lambda k: PC.growth_qoq(impl.get(k, {}), FQ))
     return rows
 
 
+def _apply_a_formulas(ws, tracker):
+    g0 = 2 + NY + 2
+    for (code, comp), rpos in tracker.items():
+        R = rpos + 1
+        for j in range(NY):
+            if j > 0:
+                mc = CL(2 + j)
+                mp = CL(1 + j)
+                cell = ws.cell(row=R, column=g0 + j)
+                cell.value = f'=IF({mp}{R}=0,"",({mc}{R}-{mp}{R})/{mp}{R}*100)'
+                cell.number_format = '#,##0.00'
+
+
+def _apply_q_formulas(ws, tracker):
+    gap = 2
+    q0 = 2 + NQ + gap
+    y0 = q0 + NQ + gap
+    c0 = y0 + NQ + gap
+    for (code, comp), rpos in tracker.items():
+        R = rpos + 1
+        for i in range(NQ):
+            mc = CL(2 + i)
+            if i > 0:
+                mp = CL(1 + i)
+                cell = ws.cell(row=R, column=q0 + i)
+                cell.value = f'=IF({mp}{R}=0,"",({mc}{R}-{mp}{R})/{mp}{R}*100)'
+                cell.number_format = '#,##0.00'
+            if i >= 4:
+                m4 = CL(2 + i - 4)
+                cell = ws.cell(row=R, column=y0 + i)
+                cell.value = f'=IF({m4}{R}=0,"",({mc}{R}-{m4}{R})/{m4}{R}*100)'
+                cell.number_format = '#,##0.00'
+            yy, qq = FQ[i]
+            if yy > C.START_YEAR:
+                s = i - (qq - 1)
+                cur = f"{CL(2 + s)}{R}:{mc}{R}"
+                prv = f"{CL(2 + s - 4)}{R}:{CL(2 + i - 4)}{R}"
+                cell = ws.cell(row=R, column=c0 + i)
+                cell.value = f'=IF(SUM({prv})=0,"",(SUM({cur})/SUM({prv})-1)*100)'
+                cell.number_format = '#,##0.00'
+
+
+def _write_growth_headers(ws, tracker_codes, kind):
+    code_rows = {}
+    head_rows = {}
+    for (code, comp), rpos in tracker_codes.items():
+        code_rows[code] = min(code_rows.get(code, 999999), rpos - 2)
+        head_rows[code] = min(head_rows.get(code, 999999), rpos - 1)
+    if kind == "A":
+        offs = [(2 + NY + 2, "Growth (%)")]
+        labs = FY
+    else:
+        gap = 2
+        q0 = 2 + NQ + gap
+        y0 = q0 + NQ + gap
+        c0 = y0 + NQ + gap
+        offs = [(q0, "Growth q to q (%)"), (y0, "Growth y o y (%)"),
+                (c0, "Growth c to c (%)")]
+        labs = FL
+    for code, cr in code_rows.items():
+        for off, title in offs:
+            ws.cell(row=cr + 1, column=off).value = title
+        for off, title in offs:
+            for i, l in enumerate(labs):
+                ws.cell(row=head_rows[code] + 1, column=off + i).value = l
+
+
 def export_workbook(result, quarters, dataset):
-    labels = C.qlabels(quarters)
-    years = sorted({y for (y, q) in quarters})
-    y0, y1 = years[0], years[-1]
+    ds_labels = C.qlabels(dataset["quarters"])
+    ds_years = sorted({y for (y, q) in dataset["quarters"]})
+    ds_year_strs = [str(y) for y in ds_years]
     defl = dataset.get("deflators", {})
+    y0, y1 = C.START_YEAR, 2030
 
-    n_hb = _block_nines(dataset, result, labels, use_raw=False)
-    n_raw = _block_nines(dataset, result, labels, use_raw=True)
+    n_hb = _block_nines(dataset, result, use_raw=False)
+    n_raw = _block_nines(dataset, result, use_raw=True)
 
-    mbg = [dataset.get("mbg_total", {}).get(l, 0.0) for l in labels]
-    stik = [dataset.get("stik_total", {}).get(l, 0.0) for l in labels]
-    bi = [dataset.get("output_bi", {}).get(l, 0.0) for l in labels]
-    bik = [dataset.get("output_bi_konstan", {}).get(l, 0.0) for l in labels]
+    mbg = [dataset.get("mbg_total", {}).get(l, 0.0) for l in ds_labels]
+    stik = [dataset.get("stik_total", {}).get(l, 0.0) for l in ds_labels]
+    bi = [dataset.get("output_bi", {}).get(l, 0.0) for l in ds_labels]
+    bik = [dataset.get("output_bi_konstan", {}).get(l, 0.0) for l in ds_labels]
     if all(v == 0 for v in bik):
         bik = list(bi)
+
+    mbg_f = _ser(mbg, ds_labels)
+    stik_f = _ser(stik, ds_labels)
+    bi_f = _ser(bi, ds_labels)
+    bik_f = _ser(bik, ds_labels)
 
     n_hb["3.1"] = n_hb.get("4.1")
     n_hb["3.2"] = _manual_nine(stik)
@@ -213,157 +288,169 @@ def export_workbook(result, quarters, dataset):
     n_raw["3.1"] = n_raw.get("4.1")
     n_raw["3.2"] = _manual_nine(stik)
     n_raw["3.3"] = _manual_nine(bi)
+    desa = n_hb.get("3.1")
+    if desa:
+        n_hb["2.1"] = T._sum_nine_lists([x for x in [n_hb.get("2.1"), desa] if x])
 
-    n_hk = {c: _nine_hk(n, defl, labels) for c, n in n_hb.items() if n}
-    n_hk["3.2"] = _manual_nine(_defl_series(stik, defl.get("IHK", {}), labels))
+    n_hk = {c: _nine_hk(n, defl, ds_labels) for c, n in n_hb.items() if n}
+    n_hk["3.2"] = _manual_nine(_defl_series(stik, defl.get("IHK", {}), ds_labels))
     n_hk["3.3"] = _manual_nine(bik)
+    n_raw_hk = {c: _nine_hk(n, defl, ds_labels) for c, n in n_raw.items() if n}
+    n_raw_hk["3.2"] = n_hk["3.2"]
+    n_raw_hk["3.3"] = n_hk["3.3"]
 
     ex_hb = {"bi": bi, "mbg": mbg, "stik": stik}
     ex_hk = {"bi": bik,
-             "mbg": _defl_series(mbg, defl.get("IHK", {}), labels),
-             "stik": _defl_series(stik, defl.get("IHK", {}), labels)}
+             "mbg": _defl_series(mbg, defl.get("IHK", {}), ds_labels),
+             "stik": _defl_series(stik, defl.get("IHK", {}), ds_labels)}
     agg_hb = _aggregates(n_hb, ex_hb)
     agg_hk = _aggregates(n_hk, ex_hk)
     agg_raw_hb = _aggregates(n_raw, ex_hb)
-    agg_raw_hk = {c: _nine_hk(n, defl, labels) and None for c in []}
-    n_raw_hk = {c: _nine_hk(n, defl, labels) for c, n in n_raw.items() if n}
-    n_raw_hk["3.2"] = n_hk["3.2"]
-    n_raw_hk["3.3"] = n_hk["3.3"]
     agg_raw_hk = _aggregates(n_raw_hk, ex_hk)
 
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
 
         home = [["LK PKP Rebasing 2025=100 - Kabupaten Konoha (XXXX)"],
-                ["Workbook final: LK 3 + LK 4 Rebasing Regional_V1"], []]
+                ["Workbook final: LK 3 + LK 4 Rebasing Regional_V1"],
+                ["Rentang: triwulan 2019Q1-2030Q4; tahun 2019-2030"], []]
         pd.DataFrame(home).to_excel(writer, sheet_name="Home",
                                     index=False, header=False)
         cat = [["Catatan"]] + [[None] for _ in range(10)]
         pd.DataFrame(cat).to_excel(writer, sheet_name="catatan",
                                    index=False, header=False)
 
-        # ---------- LK 3 ---------- #
+        trackers = {}
         for sheet, kind, src in T.QA_SHEETS:
-            col_labels = labels if kind == "Q" else [str(y) for y in years]
+            col_labels = FL if kind == "Q" else FY
+            keys = ds_labels if kind == "Q" else ds_year_strs
             rows = []
+            tracker = {}
+            pos = 0
             for code in T.BLOCKS[src]:
                 if kind == "Q":
                     nine = T._nine_lists_for_q(dataset, src, code)
                 else:
-                    nine = T._nine_lists_for_a(dataset, src, code, years)
-                rows += T._block_rows(code, col_labels, nine, C.STD_ROWS)
+                    nine = T._nine_lists_for_a(dataset, src, code, ds_years)
+                ns = T._nine_to_series(nine, keys)
+                blk, pos = T._block_rows_series(code, col_labels, ns, C.STD_ROWS,
+                                                tracker=tracker, pos=pos)
+                rows += blk
             pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
                                         index=False, header=False)
+            trackers[sheet] = (tracker, kind)
+
         rows = []
-        for code, order in T.S5_BLOCKS:
-            n = len(labels)
-            rows.append([code] + [None] * n)
-            rows.append(["Rincian"] + labels)
+        for code, title, order in T.S5_BLOCKS:
+            rows.append([title] + [None] * NQ)
+            rows.append(["Rincian"] + FL)
             for comp in order:
                 if comp == "MBG":
-                    vals = mbg
+                    src_ser = mbg_f
                 elif comp == "Klaim Jaminan kesehatan":
-                    vals = [stik[i] * C.stik_ratio_for(*C.quarter_of_label(labels[i]))[0]
-                            for i in range(n)]
+                    src_ser = {l: (stik_f.get(l) or 0)
+                               * C.stik_ratio_for(*C.quarter_of_label(l))[0]
+                               for l in ds_labels}
                 elif comp.startswith("Klaim jaminan kecelakaan"):
-                    vals = [stik[i] * C.stik_ratio_for(*C.quarter_of_label(labels[i]))[1]
-                            for i in range(n)]
+                    src_ser = {l: (stik_f.get(l) or 0)
+                               * C.stik_ratio_for(*C.quarter_of_label(l))[1]
+                               for l in ds_labels}
                 elif comp == "Output BI Berlaku":
-                    vals = bi
+                    src_ser = bi_f
                 else:
-                    vals = bik
-                rows.append([comp] + vals)
-            rows.append([None] * (1 + n))
+                    src_ser = bik_f
+                rows.append([comp] + [src_ser.get(l) for l in FL])
+            rows.append([None] * (1 + NQ))
         pd.DataFrame(rows).to_excel(writer, sheet_name="5. STIK, BI Q",
                                     index=False, header=False)
+
         for sheet, src in T.D_SHEETS:
             rows = []
+            tracker = {}
+            pos = 0
             src_map = {"apbn": None,
                        "apbd": result.get("apbd_nine_denton", {}),
                        "desa": result.get("desa_nine", {}),
                        "ssf": result.get("ssf_nine", {})}[src]
             for code in T.BLOCKS[src]:
+                ns = None
                 if src == "apbn":
-                    nine = T._nine_lists_for_q(dataset, src, code)
+                    ns = T._nine_to_series(T._nine_lists_for_q(dataset, src, code),
+                                           ds_labels)
                 elif code in T.REKAP_MAP:
-                    members = [T._series_nine_to_lists(src_map[m], labels)
-                               for m in T.REKAP_MAP[code] if m in src_map]
-                    nine = T._sum_nine_lists(members) if members else None
+                    members = [src_map.get(m) for m in T.REKAP_MAP[code] if m in src_map]
+                    if members:
+                        ns = {comp: {l: sum(m.get(comp, {}).get(l, 0.0) or 0.0
+                                            for m in members) for l in FL}
+                              for comp in C.STD_ROWS}
                 elif code in (src_map or {}):
-                    nine = T._series_nine_to_lists(src_map[code], labels)
-                else:
-                    nine = None
-                rows += T._block_rows(code, labels, nine, C.STD_ROWS)
+                    ns = src_map[code]
+                blk, pos = T._block_rows_series(code, FL, ns, C.STD_ROWS,
+                                                tracker=tracker, pos=pos)
+                rows += blk
             pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
                                         index=False, header=False)
+            trackers[sheet] = (tracker, "Q")
 
-        # ---------- LK 4 ---------- #
-        def adhb_sheets(prefix, nines):
+        for sheet, (tracker, kind) in trackers.items():
+            ws = writer.book[sheet]
+            if sheet in ("7. APBD A", "8. Desa A"):
+                _write_growth_headers(ws, tracker, "A")
+                _apply_a_formulas(ws, tracker)
+            elif sheet in ("10. APBN D", "11. APBD D", "12. Desa D", "13. SSF D"):
+                _write_growth_headers(ws, tracker, "Q")
+                _apply_q_formulas(ws, tracker)
+
+        def lk4_sheets(prefix, nines, names):
             mapping = [
-                (f"{prefix}Pusat", ["1.1", "1.2", "1.3", "1.4", "1.5",
-                                    "1.6", "1.7", "1.8", "1.9"]),
-                (f"{prefix}Daerah", ["2.1", "2.2", "2.3", "2.4", "2.5",
-                                     "2.6", "2.7", "2.8", "2.9"]),
-                (f"{prefix}SSF,STIK,BI", ["3.1", "3.2", "3.3"]),
+                (names[0], ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
+                            "1.7", "1.8", "1.9"]),
+                (names[1], ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                            "2.7", "2.8", "2.9"]),
+                (names[2], ["3.1", "3.2", "3.3"]),
             ]
             for sheet, codes in mapping:
                 rows = []
                 for code in codes:
-                    nine = nines.get(code)
-                    if code == "2.1":
-                        nine = T._sum_nine_lists([x for x in
-                                                  [nine, nines.get("3.1x")] if x])
-                    rows += T._block_rows(code, labels, nine, C.STD_ROWS)
+                    ns = T._nine_to_series(nines.get(code), ds_labels)
+                    blk, _ = T._block_rows_series(code, FL, ns, C.STD_ROWS)
+                    rows += blk
                 pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
                                             index=False, header=False)
 
-        # Daerah 2.1 = APBD 2.1 + Desa 3.1
-        for nm in ["n_hb", "n_hk", "n_raw", "n_raw_hk"]:
-            pass
-        n_hb["2.1"] = T._sum_nine_lists([n_hb.get("2.1"), n_hb.get("3.1d")]) \
-            if n_hb.get("3.1d") else n_hb.get("2.1")
-        # (desa sudah masuk lewat 4.1? tidak) -> tambahkan desa ke 2.1:
-        desa_nine = n_hb.get("3.1")
-        n_hb["2.1"] = T._sum_nine_lists([x for x in
-                                         [(_block_nines_desa(dataset, result, labels)),
-                                          n_hb.get("2.1")] if x])
+        lk4_sheets("ADHB", n_hb, ["1.ADHB Pusat", "2ab.2ab. ADHB Daerah_Final",
+                                  "3. ADHB SSF, STIK, BI"])
+        lk4_sheets("ADHK", n_hk, ["1. ADHK Pusat", "2.ADHK Daerah",
+                                  "3. ADHK SSF, STIK, BI"])
 
-        adhb_sheets("1.ADHB ", n_hb)
-        adhb_sheets("2.ADHK ", n_hk)
-
-        rows = [[d] + [defl.get(d, {}).get(l) for l in labels] for d in DEF_ORDER]
+        rows = [[d] + [defl.get(d, {}).get(l) for l in FL] for d in DEF_ORDER]
         pd.DataFrame(rows).to_excel(writer, sheet_name="Deflator",
                                     index=False, header=False)
 
-        pd.DataFrame(_rekap_tables(agg_hb, agg_hk, labels, quarters, y0, y1)
-                     ).to_excel(writer, sheet_name="Rekap Total",
-                                index=False, header=False)
-        pd.DataFrame(_rekap_tables(agg_raw_hb, agg_raw_hk, labels, quarters, y0, y1)
-                     ).to_excel(writer, sheet_name="Rekap Benchmark",
-                                index=False, header=False)
+        pd.DataFrame(_rekap_tables(agg_hb, agg_hk, y0, y1)).to_excel(
+            writer, sheet_name="Rekap Total", index=False, header=False)
+        pd.DataFrame(_rekap_tables(agg_raw_hb, agg_raw_hk, y0, y1)).to_excel(
+            writer, sheet_name="Rekap Benchmark", index=False, header=False)
 
-        # ---------- Siperi & Verdana ---------- #
         sip = []
         total = _add(agg_hb.get("pkp_k"), agg_hb.get("pkp_i"))
-        for id_code, ser in [(C.SIPERI_ID["PKP_Total"], _ser(total, labels)),
-                             (C.SIPERI_ID["Kolektif"], _ser(agg_hb.get("pkp_k"), labels)),
-                             (C.SIPERI_ID["Individu"], _ser(agg_hb.get("pkp_i"), labels))]:
-            for l in labels:
+        for id_code, ser in [(C.SIPERI_ID["PKP_Total"], _ser(total, FL)),
+                             (C.SIPERI_ID["Kolektif"], _ser(agg_hb.get("pkp_k"), FL)),
+                             (C.SIPERI_ID["Individu"], _ser(agg_hb.get("pkp_i"), FL))]:
+            for l in FL:
                 sip.append([id_code, l, ser.get(l)])
         pd.DataFrame(sip, columns=["id", "periode", "nilai"]).to_excel(
             writer, sheet_name="Upload Siperi", index=False)
 
-        verd = [
-            ("Sampah/Limbah", "air"), ("Infokom Pemerintah", "inf"),
-            ("O Administrasi Pemerintahan", "adm"),
-            ("Pendidikan Pemerintah", "dik"),
-            ("Kesehatan & Sosial Pemerintah", "kes"),
-            ("Jasa Lainnya Pemerintah", "hib"),
-        ]
-        vrows = [["Lapangan Usaha"] + labels]
+        verd = [("Sampah/Limbah", "air"), ("Infokom Pemerintah", "inf"),
+                ("O Administrasi Pemerintahan", "adm"),
+                ("Pendidikan Pemerintah", "dik"),
+                ("Kesehatan & Sosial Pemerintah", "kes"),
+                ("Jasa Lainnya Pemerintah", "hib")]
+        vrows = [["Lapangan Usaha"] + FL]
         for name, tag in verd:
-            vrows.append([name] + [( _ser(agg_hb.get("ntb_" + tag), labels) or {}).get(l)
-                                   for l in labels])
+            vrows.append([name] + [_ser(agg_hb.get("ntb_" + tag), FL).get(l)
+                                   for l in FL])
         pd.DataFrame(vrows).to_excel(writer, sheet_name="Upload Verdana",
                                      index=False, header=False)
 
@@ -376,12 +463,3 @@ def export_workbook(result, quarters, dataset):
                         cell.number_format = '#,##0.00'
 
     return buf.getvalue()
-
-
-def _block_nines_desa(dataset, result, labels):
-    dn = (result.get("desa_nine") or {}).get("3.1")
-    if dn:
-        return T._series_nine_to_lists(dn, labels)
-    if dataset.get("desa_quarterly"):
-        return PC.compute_nine_rows(dataset["desa_quarterly"], dataset["quarters"])
-    return None

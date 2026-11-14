@@ -1,7 +1,9 @@
 """
-core/template_io.py (v2.1)
-File Kerja / Template = struktur resmi LK 3 Indikator dan Denton_V1 (15 sheet).
-Deflator dibawa lewat meta 'deflator_json' di sheet Home (tidak menambah sheet).
+core/template_io.py (v3)
+File Kerja / Template = struktur LK 3 Indikator dan Denton_V1.
+Rentang kolom PENUH: triwulan 2019Q1-2030Q4, tahun 2019-2030.
+Sheet 5 lengkap: 5.1 STIK MBG Triwulanan, 5.2 STIK Klaim Jaminan Sosial, 5.3 Output BI.
+Pembaca toleran terhadap variasi spasi pada nama sheet.
 """
 
 import io
@@ -15,7 +17,12 @@ from . import constants as C
 from . import parsers as P
 from . import pkp_calculator as PC
 
-VERSI_FORMAT = "2.1"
+VERSI_FORMAT = "3.0"
+
+FULL_QUARTERS = C.build_quarters(C.START_YEAR, 2030, 4)
+FULL_LABELS = C.qlabels(FULL_QUARTERS)
+FULL_YEARS = list(range(C.START_YEAR, 2031))
+FULL_YEAR_STRS = [str(y) for y in FULL_YEARS]
 
 APBN_BLOCKS = ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9"]
 APBD_BLOCKS = ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "2.7", "2.8", "2.9"]
@@ -45,30 +52,42 @@ QA_SHEETS = [
 D_SHEETS = [("10. APBN D", "apbn"), ("11. APBD D", "apbd"),
             ("12. Desa D", "desa"), ("13. SSF D", "ssf")]
 S5_BLOCKS = [
-    ("5.1", ["MBG"]),
-    ("5.2", ["Klaim Jaminan kesehatan",
-             "Klaim jaminan kecelakaan kerja berupa barang/jasa"]),
-    ("5.3", ["Output BI Berlaku", "Output BI Konstan"]),
+    ("5.1", "5.1 STIK MBG Triwulanan", ["MBG"]),
+    ("5.2", "5.2 STIK Klaim Jaminan Sosial",
+     ["Klaim Jaminan kesehatan",
+      "Klaim jaminan kecelakaan kerja berupa barang/jasa"]),
+    ("5.3", "5.3 Output BI", ["Output BI Berlaku", "Output BI Konstan"]),
 ]
 PETUNJUK_LINES = [
     "TEMPLATE / FILE KERJA - LK PKP Rebasing 2025=100 Kab. Konoha",
     "Struktur mengikuti LK 3 Indikator dan Denton_V1.",
+    "Rentang kolom: triwulan 2019Q1-2030Q4; tahun 2019-2030.",
     "",
     "1. Isi HANYA sel angka pada 5 baris input tiap blok: Belanja Barang,",
     "   Belanja Bansos, Belanja pegawai, Penyusutan, Penerimaan.",
     "   Baris Biaya Antara/NTB/Output/PKP serta blok rekap diisi aplikasi.",
     "2. Jangan mengubah nama sheet, nama blok, maupun nama komponen/rincian.",
-    "3. Satuan: JUTA RUPIAH. Aplikasi mendeteksi otomatis bila Anda menulis",
-    "   dalam Rupiah penuh dan menormalkannya.",
-    "4. Penulisan angka bebas: kaidah Indonesia (5.976.606,65) atau biasa.",
-    "5. Sel kosong dianggap NOL. Nilai minus dilaporkan sebagai anomali SIKD",
-    "   pada pratinjau unggah, sebelum diterapkan.",
+    "3. Satuan: JUTA RUPIAH. Aplikasi mendeteksi otomatis Rupiah penuh.",
+    "4. Penulisan angka bebas: gaya Indonesia (5.976.606,65) atau biasa.",
+    "5. Sel kosong dianggap NOL. Nilai minus dilaporkan sebagai anomali SIKD.",
     "6. Sheet 'catatan' bebas Anda isi; tidak dibaca aplikasi.",
-    "7. Deflator tidak memiliki sheet sendiri (ia bagian LK 4); nilai deflator",
-    "   Anda tersimpan otomatis di baris meta sheet Home saat Simpan.",
+    "7. Deflator tidak bersheet sendiri (ia bagian LK 4); nilainya tersimpan",
+    "   otomatis di baris meta sheet Home saat Simpan.",
 ]
 META_KEYS = ["versi_format", "kode_kab", "wilayah", "tahun_awal",
              "triwulan_berjalan", "disimpan_pada", "deflator_json"]
+
+
+def _norm_sheet(name):
+    return re.sub(r"\s+", "", str(name).lower())
+
+
+def _find_sheet(xls, expected):
+    target = _norm_sheet(expected)
+    for actual in xls.keys():
+        if _norm_sheet(actual) == target:
+            return actual
+    return None
 
 
 def _is_qlabel(x):
@@ -109,6 +128,16 @@ def _sum_nine_lists(list_of_nine):
                 for i, v in enumerate(a):
                     total[i] += (v or 0.0)
             out[comp] = total
+    return out
+
+
+def _nine_to_series(nine_lists, keys):
+    out = {}
+    for comp, arr in (nine_lists or {}).items():
+        if arr is None:
+            out[comp] = {}
+        else:
+            out[comp] = {keys[i]: arr[i] for i in range(min(len(arr), len(keys)))}
     return out
 
 
@@ -185,28 +214,34 @@ def _series_nine_to_lists(nine_series, col_labels):
             for comp in C.STD_ROWS}
 
 
-def _block_rows(code, col_labels, nine, order):
+def _block_rows_series(code, col_labels, nine_series, order, tracker=None,
+                       pos=None, title=None):
     n = len(col_labels)
-    rows = [[code] + [None] * n]
+    rows = [[title or code] + [None] * n]
     rows.append(["komponen/rincian"] + list(col_labels))
+    p = pos if pos is not None else 0
     for comp in order:
-        vals = (nine or {}).get(comp)
-        rows.append([comp] + (list(vals) if vals else [None] * n))
+        ser = (nine_series or {}).get(comp, {})
+        rows.append([comp] + [ser.get(l) for l in col_labels])
+        if tracker is not None:
+            tracker[(code, comp)] = p + 2
+        p += 1
     rows.append([None] * (1 + n))
-    return rows
+    return rows, (p + 1)
 
 
 def build_workbook_bytes(dataset, setup, filled=True, result=None):
     if dataset is not None:
-        quarters = dataset["quarters"]
+        ds_labels = C.qlabels(dataset["quarters"])
+        ds_years = sorted({y for (y, q) in dataset["quarters"]})
     else:
         cq = (setup or {}).get("current_quarter") or (2026, 2)
         sy = (setup or {}).get("start_year", C.START_YEAR)
-        quarters = C.build_quarters(sy, cq[0], cq[1])
-    labels = C.qlabels(quarters)
-    years = sorted({y for (y, q) in quarters})
-    year_strs = [str(y) for y in years]
-    cq = (setup or {}).get("current_quarter") or quarters[-1]
+        qq = C.build_quarters(sy, cq[0], cq[1])
+        ds_labels = C.qlabels(qq)
+        ds_years = sorted({y for (y, q) in qq})
+    ds_year_strs = [str(y) for y in ds_years]
+    cq = (setup or {}).get("current_quarter") or (2026, 2)
     ds = dataset if (filled and dataset) else None
     result = result or {}
 
@@ -221,7 +256,7 @@ def build_workbook_bytes(dataset, setup, filled=True, result=None):
             ["versi_format", VERSI_FORMAT],
             ["kode_kab", C.KODE_KAB],
             ["wilayah", C.NAMA_KAB],
-            ["tahun_awal", quarters[0][0]],
+            ["tahun_awal", C.START_YEAR],
             ["triwulan_berjalan", C.qlabel(*cq)],
             ["disimpan_pada", datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
         ]
@@ -240,7 +275,8 @@ def build_workbook_bytes(dataset, setup, filled=True, result=None):
                                    index=False, header=False)
 
         for sheet, kind, src in QA_SHEETS:
-            col_labels = labels if kind == "Q" else year_strs
+            col_labels = FULL_LABELS if kind == "Q" else FULL_YEAR_STRS
+            keys = ds_labels if kind == "Q" else ds_year_strs
             rows = []
             for code in BLOCKS[src]:
                 nine = None
@@ -248,33 +284,35 @@ def build_workbook_bytes(dataset, setup, filled=True, result=None):
                     if kind == "Q":
                         nine = _nine_lists_for_q(ds, src, code)
                     else:
-                        nine = _nine_lists_for_a(ds, src, code, years)
-                rows += _block_rows(code, col_labels, nine, C.STD_ROWS)
+                        nine = _nine_lists_for_a(ds, src, code, ds_years)
+                ns = _nine_to_series(nine, keys)
+                blk, _ = _block_rows_series(code, col_labels, ns, C.STD_ROWS)
+                rows += blk
             pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
                                         index=False, header=False)
 
         rows = []
-        for code, order in S5_BLOCKS:
-            n = len(labels)
-            rows.append([code] + [None] * n)
-            rows.append(["Rincian"] + labels)
+        for code, title, order in S5_BLOCKS:
+            n = len(FULL_LABELS)
+            rows.append([title] + [None] * n)
+            rows.append(["Rincian"] + FULL_LABELS)
             for comp in order:
                 vals = [None] * n
                 if ds is not None:
                     if comp == "MBG":
-                        vals = [ds.get("mbg_total", {}).get(l) for l in labels]
+                        vals = [ds.get("mbg_total", {}).get(l) for l in FULL_LABELS]
                     elif comp == "Klaim Jaminan kesehatan":
                         vals = [(ds.get("stik_total", {}).get(l, 0.0) or 0.0)
                                 * C.stik_ratio_for(*C.quarter_of_label(l))[0]
-                                for l in labels]
+                                if l in ds_labels else None for l in FULL_LABELS]
                     elif comp.startswith("Klaim jaminan kecelakaan"):
                         vals = [(ds.get("stik_total", {}).get(l, 0.0) or 0.0)
                                 * C.stik_ratio_for(*C.quarter_of_label(l))[1]
-                                for l in labels]
+                                if l in ds_labels else None for l in FULL_LABELS]
                     elif comp == "Output BI Berlaku":
-                        vals = [ds.get("output_bi", {}).get(l) for l in labels]
+                        vals = [ds.get("output_bi", {}).get(l) for l in FULL_LABELS]
                     elif comp == "Output BI Konstan":
-                        vals = [ds.get("output_bi_konstan", {}).get(l) for l in labels]
+                        vals = [ds.get("output_bi_konstan", {}).get(l) for l in FULL_LABELS]
                 rows.append([comp] + vals)
             rows.append([None] * (1 + n))
         pd.DataFrame(rows).to_excel(writer, sheet_name="5. STIK, BI Q",
@@ -283,27 +321,27 @@ def build_workbook_bytes(dataset, setup, filled=True, result=None):
         for sheet, src in D_SHEETS:
             rows = []
             for code in BLOCKS[src]:
-                nine = None
+                nine_series = None
                 if ds is not None:
                     if src == "apbn":
-                        nine = _nine_lists_for_q(ds, src, code)
-                    elif src == "apbd":
-                        src_map = result.get("apbd_nine_denton", {})
+                        nine_series = _nine_to_series(
+                            _nine_lists_for_q(ds, src, code), ds_labels)
+                    else:
+                        src_map = {"apbd": result.get("apbd_nine_denton", {}),
+                                   "desa": result.get("desa_nine", {}),
+                                   "ssf": result.get("ssf_nine", {})}[src]
                         if code in REKAP_MAP:
-                            members = [_series_nine_to_lists(src_map[m], labels)
-                                       for m in REKAP_MAP[code] if m in src_map]
-                            nine = _sum_nine_lists(members) if members else None
+                            members = [src_map.get(m) for m in REKAP_MAP[code]]
+                            members = [m for m in members if m]
+                            if members:
+                                nine_series = {comp: {
+                                    l: sum(m.get(comp, {}).get(l, 0.0) or 0.0
+                                           for m in members)
+                                    for l in FULL_LABELS} for comp in C.STD_ROWS}
                         elif code in src_map:
-                            nine = _series_nine_to_lists(src_map[code], labels)
-                    elif src == "desa":
-                        src_map = result.get("desa_nine", {})
-                        if code in src_map:
-                            nine = _series_nine_to_lists(src_map[code], labels)
-                    elif src == "ssf":
-                        src_map = result.get("ssf_nine", {})
-                        if code in src_map:
-                            nine = _series_nine_to_lists(src_map[code], labels)
-                rows += _block_rows(code, labels, nine, C.STD_ROWS)
+                            nine_series = src_map[code]
+                blk, _ = _block_rows_series(code, FULL_LABELS, nine_series, C.STD_ROWS)
+                rows += blk
             pd.DataFrame(rows).to_excel(writer, sheet_name=sheet,
                                         index=False, header=False)
 
@@ -342,8 +380,9 @@ def _scan_blocks(df, kind, handler):
         s0 = _cell_str(row.iloc[0])
         if s0 == "":
             continue
-        if re.fullmatch(r"\d+\.\d+", s0):
-            current = s0
+        m = re.match(r"^(\d+\.\d+)", s0)
+        if m and "rincian" not in s0.lower():
+            current = m.group(1)
             col_labels = []
             continue
         if "rincian" in s0.lower():
@@ -365,11 +404,17 @@ def parse_workbook(file_bytes):
     report = {"sheets_read": [], "sheets_missing": [], "units": {},
               "rows_filled": {}, "negatives": [], "unknown_codes": [],
               "meta": {}}
-    report["sheets_read"] = [n for n in SHEET_NAMES if n in xls]
-    report["sheets_missing"] = [n for n in SHEET_NAMES if n not in xls]
+    found = {}
+    for name in SHEET_NAMES:
+        actual = _find_sheet(xls, name)
+        if actual:
+            found[name] = actual
+            report["sheets_read"].append(name)
+        else:
+            report["sheets_missing"].append(name)
 
-    if "Home" in xls:
-        for _, row in xls["Home"].iterrows():
+    if "Home" in found:
+        for _, row in xls[found["Home"]].iterrows():
             k = _cell_str(row.iloc[0])
             if k == "deflator_json":
                 try:
@@ -381,8 +426,9 @@ def parse_workbook(file_bytes):
         report["meta"] = parsed["meta"]
 
     for sheet, kind, src in QA_SHEETS:
-        if sheet not in xls:
+        if sheet not in found:
             continue
+        df = xls[found[sheet]]
         entries = []
 
         def handler(code, comp, vals):
@@ -399,7 +445,7 @@ def parse_workbook(file_bytes):
                 if v is not None:
                     entries.append((code, comp_norm, lab, v))
 
-        _scan_blocks(xls[sheet], kind, handler)
+        _scan_blocks(df, kind, handler)
         raws = [e[3] for e in entries]
         unit = P.detect_unit(raws) if raws else "Juta"
         factor = 1e-6 if unit == "Rupiah" else 1.0
@@ -430,7 +476,8 @@ def parse_workbook(file_bytes):
         report["units"][sheet] = unit
         report["rows_filled"][sheet] = len(entries)
 
-    if "5. STIK, BI Q" in xls:
+    s5 = _find_sheet(xls, "5. STIK, BI Q")
+    if s5:
         entries = []
 
         def handler5(code, comp, vals):
@@ -439,7 +486,7 @@ def parse_workbook(file_bytes):
                 if v is not None:
                     entries.append((cl, lab, v))
 
-        _scan_blocks(xls["5. STIK, BI Q"], "Q", handler5)
+        _scan_blocks(xls[s5], "Q", handler5)
         raws = [e[2] for e in entries]
         unit = P.detect_unit(raws) if raws else "Juta"
         factor = 1e-6 if unit == "Rupiah" else 1.0
